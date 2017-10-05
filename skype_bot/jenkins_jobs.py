@@ -42,11 +42,11 @@ def get_last_build_errors(job_name):
 
 def format_build_info(last_build):
     for key, _value in list(last_build.items()):
-        if key == 'timestamp':
-            last_build['timestamp'] = datetime.fromtimestamp(last_build['timestamp'] / 1000)
-            last_build['took'] = (datetime.now() - last_build['timestamp'])
-        elif key == 'duration':
-            last_build['duration'] = last_build['duration'] / 1000.0 / 60.0 # minutes
+#         if key == 'timestamp':
+#             last_build['timestamp'] = datetime.fromtimestamp(last_build['timestamp'] / 1000)
+#             last_build['took'] = (datetime.now() - last_build['timestamp'])
+#         elif key == 'duration':
+#             last_build['duration'] = last_build['duration'] / 1000.0 / 60.0 # minutes
 
         if key == 'actions':
             for actions in _value:
@@ -71,8 +71,10 @@ def get_job_last_build(job_name):
     return format_build_info(result)
 
 
-def get_building_jobs():
-    url = jenkins_url + 'api/json?pretty=true&tree=jobs[fullName,lastBuild[building,number,duration,builtOn,timestamp,result,estimatedDuration,actions[causes[*]]]]'
+def get_building_jobs(config):
+    url = config['url'] + 'api/json?pretty=true&tree=jobs[fullName,lastBuild[building,number,duration,builtOn,timestamp,result,estimatedDuration,actions[causes[*]]]]'
+    JENKINS_USER = config['user']
+    JENKINS_TOKEN = config['token']
     r = requests.get(url, auth=(JENKINS_USER, JENKINS_TOKEN))
 
     result = json.loads(r.text)

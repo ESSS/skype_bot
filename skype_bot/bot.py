@@ -9,7 +9,7 @@ import requests
 
 from auth import Auth
 from flask import Flask, request
-from skype_bot.jenkins_jobs import get_job_url
+from skype_bot.jenkins_jobs import get_job_url, get_building_jobs
 from skype_bot.skype_message import SkypeMessage
 
 
@@ -151,6 +151,20 @@ class Bot(Flask):
                     db_contact_info.update(contact_info)
                     users_db.save(db_contact_info)
             
+
+    def _build_job_message(self, caption, job_name, build_info):
+        from datetime import datetime
+        
+        job_link = SkypeMessage.link(get_job_url(job_name, self.jenkins_config), job_name)
+
+        message = '(skate) <b>{}:</b> {}'.format(caption, job_link)
+
+        start_millis = int(build_info['timestamp'])
+        start_time = datetime.fromtimestamp(start_millis / 1000)
+        message += '\nStarted: <b>{}</b>'.format(start_time)
+        message += '\nBuilding On: <b>{}</b>'.format(build_info['builtOn'])
+        
+        return message
 
 
     def _send_start_message(self, build_info):
@@ -350,13 +364,29 @@ class Bot(Flask):
         else:            
             return self.UNKNOWN_USER_MSG 
 
-    def status(self, message_text, message_type, conversation_id, sender_name, sender_id):
+    def status(self, message_text, message_type, conversation_id, skype_name, skype_id):
         '''
         Return current running jobs status started by you!
         
         usage: status
         '''
-        return 'status'
+        building_jobs = get_building_jobs(self.jenkins_config)
+        if len(building_jobs) == 0:
+            return ' There is not jobs running!'
+        
+        msg = 'There are {} jobs running!'.format(len(building_jobs))
+        
+        jenkins_id = self.get_contact_jenkins_id(skype_id)
+        found_user_job = False
+        for job_name, job_info in building_jobs.items():
+            if job_info.get('userId') == jenkins_id:
+                msg += ' \n' + self._build_job_message('Running', job_name, job_info)
+                found_user_job = True
+        
+        if not found_user_job:
+            msg += '\nYou have none jobs running!'
+            
+        return msg
 
 
     def help(self, message_text, message_type, conversation_id, sender_name, sender_id):
