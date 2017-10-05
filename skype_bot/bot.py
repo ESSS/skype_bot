@@ -451,7 +451,7 @@ class Bot(Flask):
     UNKNOWN_USER_MSG = "Sorry. I don't know you yet.\nReply with your jenkins user name in the form: jenkins_id: your_id"
         
     def _handle_new_user(self, message_text, message_type, conversation_id, sender_name, sender_id):
-        jenkins_id_match = re.search('jenkins_id:\s([^\s]+)', message_text)
+        jenkins_id_match = re.search('jenkins_id:\s*([^\s]+)', message_text, re.IGNORECASE)
         if jenkins_id_match:
             jenkins_id = jenkins_id_match.group(1)
             self._register_jenkins_user(jenkins_id, conversation_id, sender_name, sender_id)
@@ -465,7 +465,7 @@ class Bot(Flask):
         
         usage: stop: history_id
         '''
-        match = re.search('stop: (\d)', message_text, re.IGNORECASE)
+        match = re.search('stop:\s*(\d)', message_text, re.IGNORECASE)
         if not match:
             return 'Unable to get build number from message: "{}"'.format(message_text)
         
@@ -492,7 +492,7 @@ class Bot(Flask):
         
         usage: rebuild: history_id
         '''
-        match = re.search('rebuild: (\d)', message_text, re.IGNORECASE)
+        match = re.search('rebuild:\s*(\d)', message_text, re.IGNORECASE)
         if not match:
             return 'Unable to get build number from message: "{}"'.format(message_text)
         
