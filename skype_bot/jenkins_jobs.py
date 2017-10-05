@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 
 import requests
+import urllib
 
 
 #===================================================================================================
@@ -12,11 +13,134 @@ import requests
 def get_job_url(job_name, config):
     return config['url'] + 'job/' + job_name
 
+def get_jenkins_config(config):
+    return config['url'], config['user'], config['token']
 
-def get_last_build_errors(job_name):
 
-    url = jenkins_url + 'job/' + job_name + '/lastBuild/testReport/api/json?pretty=true&tree=suites[cases[className,name,status,errorStackTrace]]'
-    r = requests.get(url, auth=(JENKINS_USER, JENKINS_TOKEN))
+def get_job_parameters(job_name, config):
+    jenkins_url, user, token = get_jenkins_config(config)
+    
+    url = jenkins_url + 'job/' + job_name + \
+        '/api/json?pretty=true&tree=actions[parameterDefinitions[name]]'
+
+    print(url)
+    r = requests.get(url, auth=(user, token))
+    if r.status_code != 200:
+        return []
+
+    try:
+        result = json.loads(r.text)
+    except:
+        return []
+    
+
+    actions = result.get('actions')
+    if actions:
+        for action in actions:
+            parameterDefinitions = action.get('parameterDefinitions')
+            if parameterDefinitions:
+                params = []
+                for param in parameterDefinitions:
+                    params.append(param['name'])
+                return params
+    
+    return None
+    
+def get_jenkins_json_request(query_url, config):
+    jenkins_url, user, token = get_jenkins_config(config)
+
+    url = jenkins_url + query_url
+    
+    r = requests.get(url, auth=(user, token))
+    if r.status_code not in [200, 201]:
+        return None
+
+    try:
+        return json.loads(r.text)
+    except:
+        return None
+    
+
+def post_jenkins_json_request(query_url, config):
+    jenkins_url, user, token = get_jenkins_config(config)
+
+    url = jenkins_url + query_url
+    
+    r = requests.post(url, auth=(user, token))
+    return r.status_code
+    
+
+def get_build_parameters(job_name, build_number, config):
+    if build_number is None:
+        build_number = 'lastBuild'
+
+    query = 'job/{}/{}/api/json?pretty=true&tree=actions[parameters[name,value]]'.format(job_name, build_number)
+
+    json_result = get_jenkins_json_request(query, config)
+    if json_result:
+        actions = json_result.get('actions')
+        if actions:
+            for action in actions:
+                parameters = action.get('parameters')
+                if parameters:
+                    result = []
+                    for parameter in parameters:
+                        result.append((parameter['name'], parameter['value']))
+                    return result
+        
+    
+def get_last_build_info(job_name, config):
+    '''
+    return a dict like:
+    {
+      "_class" : "hudson.model.FreeStyleBuild",
+      "building" : true,
+      "number" : 14
+    }
+    '''
+    build_number = 'lastBuild'
+    query = 'job/{}/{}/api/json?pretty=true&tree=building,number'.format(job_name, build_number)
+
+    return get_jenkins_json_request(query, config)
+        
+    
+def rebuild_job(job_name, config):
+    parameters = get_build_parameters(job_name, None, config)
+    if parameters:
+        post_url = 'job/{}/buildWithParameters?{}'.format(job_name, urllib.urlencode(parameters))
+        print(post_url) 
+        return post_jenkins_json_request(post_url, config)
+    else:
+        return post_jenkins_json_request('job/{}/build'.format(job_name), config)
+        
+    
+def stop_job(job_name, config):
+    last_build_info = get_last_build_info(job_name, config)
+    if last_build_info is None:
+        return 'Job build not found'
+
+    building = last_build_info.get('building')
+    if building:
+        post_url = 'job/{}/{}/stop'.format(job_name, last_build_info['number'])
+        return unicode(post_jenkins_json_request(post_url, config))
+    
+    elif building == False:
+        return 'Job is no longer running: ' + job_name
+
+    return 'Unable to determine job progress: ' + job_name
+
+
+def get_build_test_errors(job_name, build_number, config):
+    jenkins_url, user, token = get_jenkins_config(config)
+    
+    if build_number is None:
+        build_number = 'lastBuild'
+
+    # A more complete query can be done:
+    # '/{}/testReport/api/json?pretty=true&tree=suites[cases[className,name,status,errorStackTrace]]'.format(build_number)
+    url = jenkins_url + 'job/' + job_name + \
+        '/{}/testReport/api/json?pretty=true&tree=suites[cases[name,status]]'.format(build_number)
+    r = requests.get(url, auth=(user, token))
     if r.status_code != 200:
         return []
 

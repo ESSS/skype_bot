@@ -9,9 +9,54 @@ import requests
 
 from auth import Auth
 from flask import Flask, request
-from skype_bot.jenkins_jobs import get_job_url, get_building_jobs
+from skype_bot.jenkins_jobs import get_job_url, get_building_jobs, rebuild_job, stop_job,\
+    get_build_test_errors
 from skype_bot.skype_message import SkypeMessage
 
+
+class JobsHistory(object):
+    
+    
+    def __init__(self, jobs_db):
+        self.jobs_db = jobs_db
+
+
+    def get_history(self, jenkins_id):
+        if self.jobs_db is not None:
+            users_history = list(self.jobs_db.find({'jenkins_id' : jenkins_id}))
+            if users_history and len(users_history) == 1:
+                return users_history[0]
+
+    def get_jobs_history(self, jenkins_id):
+        user_history = self.get_history(jenkins_id)
+        print jenkins_id, user_history
+        if user_history:
+            return user_history['history']
+        else:
+            return []
+
+
+    def add_job(self, jenkins_id, job_name):
+        user_history = self.get_history(jenkins_id)
+        if user_history:
+            history = user_history['history']
+            try:
+                entry_index = history.index(job_name)
+            except ValueError:
+                pass
+            else:
+                history.pop(entry_index)
+                
+            history.insert(0, job_name)
+            print('save', user_history)
+            self.jobs_db.save(user_history)
+            
+        elif self.jobs_db:
+            self.jobs_db.insert_one({
+                'jenkins_id' : jenkins_id,
+                'history' : [job_name]
+            })
+            
 
 class Bot(Flask):
 
@@ -54,10 +99,11 @@ class Bot(Flask):
         
         self.mongodb_url = None
         self._users_db = None
+        self._users_history = None
         mongodb_config = config.get('mongodb')
         if mongodb_config:
             self.mongodb_url = mongodb_config.get('url')
-            self._setup_users()
+            self._setup_mongo_db()
 
         self.add_url_rule('/api/messages', view_func=self.api_messages, methods=['POST'])
         self.add_url_rule('/job/started', view_func=self.job_started, methods=['GET'])
@@ -84,18 +130,28 @@ class Bot(Flask):
             return {}
 
     # JenkinsDB ------------------------------------------------------------------------------------
-    def _get_users_db(self):
-        if self.mongodb_url is not None and self._users_db is None:
+    def _setup_mongo_db(self):
+        if self.mongodb_url is not None:
             from pymongo import MongoClient
             
-            client = MongoClient(self.mongodb_url)
-            print(client.server_info())
-        
-            self._users_db =client.jenkins.skype_users
+            self.mongo_client = client = MongoClient(self.mongodb_url)
+            self._users_db = client.jenkins.skype_users
+            self._users_history = JobsHistory(client.jenkins.users_jobs)
             
+    
+    def _get_users_db(self):
         return self._users_db
             
-             
+    def _get_user_history(self, jenkins_id):
+        if self._users_history:
+            return self._users_history.get_jobs_history(jenkins_id)
+        else:
+            return []
+
+
+    def _add_user_history(self, jenkins_id, job_name):
+        if self._users_history:
+            return self._users_history.add_job(jenkins_id, job_name)
     
     def _setup_users(self):
         users_db = self._get_users_db()
@@ -174,12 +230,14 @@ class Bot(Flask):
         '''
         from datetime import datetime
 
-        user_id = build_info['userId']
-        conversation_id = self.get_jenkins_conversation_id(user_id)
+        jenkins_id = build_info['userId']
+        conversation_id = self.get_jenkins_conversation_id(jenkins_id)
         if conversation_id is None:
             return
 
         job_name = build_info['job_name']
+        self._add_user_history(jenkins_id, job_name)
+
         job_link = SkypeMessage.link(get_job_url(job_name, self.jenkins_config), job_name)
 
         message = '(skate) <b>Started:</b> {}'.format(job_link)
@@ -237,6 +295,26 @@ class Bot(Flask):
         start_millis = int(build_info['timestamp'])
         start_time = datetime.fromtimestamp(start_millis / 1000)
         message += '\nStarted: <b>{}</b>'.format(start_time)
+        
+        build_number = build_info.get('number')
+        if job_result == 'FAILURE' and build_number is not None:
+            test_errors = get_build_test_errors(job_name, int(build_number), self.jenkins_config)
+            message += '\n<b>Errors:</b>'
+            if len(test_errors) == 0:
+                message += ' Unable to collect'
+            else:
+                message += ' {}'.format(len(test_errors))
+                
+            i = 0;
+            for error in test_errors:
+                message += '   <b>{}</b>\n'.format(error['name'])
+                i += 1
+                if i >= 10:
+                    break
+
+            if len(test_errors) > 10:
+                message += '<b>There is more</b>\n'
+                
 
         self.send(conversation_id, message)
 
@@ -364,6 +442,78 @@ class Bot(Flask):
         else:            
             return self.UNKNOWN_USER_MSG 
 
+    def stop(self, message_text, message_type, conversation_id, skype_name, skype_id):
+        '''
+        Stops the given job index from your history.
+        
+        usage: stop: history_id
+        '''
+        match = re.search('stop: (\d)', message_text, re.IGNORECASE)
+        if not match:
+            return 'Unable to get build number from message: "{}"'.format(message_text)
+        
+        jenkins_id = self.get_contact_jenkins_id(skype_id)
+        if jenkins_id is None:
+            return 'No history, since you are not registered! ;)'
+        
+        history = self._get_user_history(jenkins_id)
+        if history is None or len(history) == 0:
+            return 'No history!'
+
+        history_number = int(match.group(1)) - 1
+        if history_number < 0 or history_number > len(history):
+            return 'Invalid history number: {}'.format(history_number)
+
+        job_name = history[history_number]
+        return stop_job(job_name, self.jenkins_config)
+
+
+    def rebuild(self, message_text, message_type, conversation_id, skype_name, skype_id):
+        '''
+        Rebuilds the given job index from your history.
+        If the job is parametrized, the same parametrization from last run will be used.
+        
+        usage: rebuild: history_id
+        '''
+        match = re.search('rebuild: (\d)', message_text, re.IGNORECASE)
+        if not match:
+            return 'Unable to get build number from message: "{}"'.format(message_text)
+        
+        jenkins_id = self.get_contact_jenkins_id(skype_id)
+        if jenkins_id is None:
+            return 'No history, since you are not registered! ;)'
+        
+        history = self._get_user_history(jenkins_id)
+        if history is None or len(history) == 0:
+            return 'No history!'
+
+        history_number = int(match.group(1)) - 1
+        if history_number < 0 or history_number > len(history):
+            return 'Invalid history number: {}'.format(history_number)
+
+        job_name = history[history_number]
+        rebuild_job(job_name, self.jenkins_config)
+
+
+    def history(self, message_text, message_type, conversation_id, skype_name, skype_id):
+        '''
+        Return a list of your last 5 jobs
+        
+        usage: history
+        '''
+        jenkins_id = self.get_contact_jenkins_id(skype_id)
+        if jenkins_id is None:
+            return 'No history, since you are not registered! ;)'
+        
+        history = self._get_user_history(jenkins_id)
+        if history is None or len(history) == 0:
+            return 'No history!'
+        
+        msg = 'Last build jobs:'
+        for i, job_name in enumerate(history):
+            msg += '\n  - {}: {}'.format(i+1, job_name)
+        return msg
+        
     def status(self, message_text, message_type, conversation_id, skype_name, skype_id):
         '''
         Return current running jobs status started by you!
@@ -403,6 +553,9 @@ class Bot(Flask):
         
         self.message_handlers.append(self.help)
         self.message_handlers.append(self.status)
+        self.message_handlers.append(self.history)
+        self.message_handlers.append(self.rebuild)
+        self.message_handlers.append(self.stop)
         
     def iter_handlers(self):
         for handler_function in self.message_handlers:
