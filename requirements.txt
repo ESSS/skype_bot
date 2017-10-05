@@ -23,6 +23,9 @@ pyOpenSSL==16.2.0
 requests==2.12.4
 six==1.10.0               # via cryptography, pyopenssl
 Werkzeug==0.11.15         # via flask
+mock==2.0.0
+pytest==3.2.3
+pyaml==17.8.0
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools                # via cryptography

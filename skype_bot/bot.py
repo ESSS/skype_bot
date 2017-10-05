@@ -2,6 +2,8 @@
 import json
 import logging
 import os
+import re
+import inspect
 
 import requests
 
@@ -45,8 +47,9 @@ class Bot(Flask):
         self.add_to_contactlist_handler = None
         self.remove_from_contactlist_handler = None
 
-        self._jenkins_contacts = {}
+        self._known_contacts = []
         self.jenkins_config = config.get('jenkins', {'url' : ''})
+        self.register_handlers()
 
         self.add_url_rule('/api/messages', view_func=self.api_messages, methods=['POST'])
         self.add_url_rule('/job/started', view_func=self.job_started, methods=['GET'])
@@ -72,8 +75,37 @@ class Bot(Flask):
             return {}
 
     # Jenkins --------------------------------------------------------------------------------------
-    def get_jenkins_contact_conversation(self, user_id):
-        return self._jenkins_contacts.get(user_id)
+    def get_jenkins_conversation_id(self, jenkins_id):
+        for user_info in self._known_contacts:
+            if user_info['jenkins_id'] == jenkins_id:
+                return user_info['conversation_id']
+    
+    def get_contact_info(self, skype_id):
+        for user_info in self._known_contacts:
+            if skype_id == user_info['skype']['id']:
+                return user_info
+        
+    def get_contact_jenkins_id(self, skype_id):
+        for user_info in self._known_contacts:
+            if skype_id == user_info['skype']['id']:
+                return user_info['jenkins_id']
+            
+    def _register_jenkins_user(self, jenkins_id, conversation_id, skype_name, skype_id):
+        contact_info = self.get_contact_info(skype_id)
+        new_contact_info = {
+            'jenkins_id' : jenkins_id,
+            'skype' : {
+                'id' : skype_id,
+                'name' : skype_name
+            },
+            'conversation_id' : conversation_id
+        }
+        if contact_info is None:
+            self._known_contacts.append(new_contact_info)
+            
+        else:
+            contact_info.update(new_contact_info)
+
 
     def _send_start_message(self, build_info):
         '''
@@ -83,7 +115,7 @@ class Bot(Flask):
         from datetime import datetime
 
         user_id = build_info['userId']
-        conversation_id = self.get_jenkins_contact_conversation(user_id)
+        conversation_id = self.get_jenkins_conversation_id(user_id)
         if conversation_id is None:
             return
 
@@ -124,7 +156,7 @@ class Bot(Flask):
         from datetime import datetime
 
         user_id = build_info['userId']
-        conversation_id = self.get_jenkins_contact_conversation(user_id)
+        conversation_id = self.get_jenkins_conversation_id(user_id)
         if conversation_id is None:
             return
 
@@ -248,6 +280,56 @@ class Bot(Flask):
             self.logger.exception(e)
             raise Exception(e)
 
+    REGISTER_USER_MSG = "Thanks. You are registered as: '{}'"
+    UNKNOWN_USER_MSG = "Sorry. I don't know you yet.\nReply with your jenkins user name in the form: 'jenkins_id: <your id>"
+        
+    def _handle_new_user(self, message_text, message_type, conversation_id, sender_name, sender_id):
+        jenkins_id_match = re.search('jenkins_id:\s([^\s]+)', message_text)
+        if jenkins_id_match:
+            jenkins_id = jenkins_id_match.group(1)
+            self._register_jenkins_user(jenkins_id, conversation_id, sender_name, sender_id)
+            return self.REGISTER_USER_MSG.format(jenkins_id)
+        else:            
+            return self.UNKNOWN_USER_MSG 
+
+    def status(self, message_text, message_type, conversation_id, sender_name, sender_id):
+        '''
+        Return current running jobs status started by you!
+        
+        usage: status
+        '''
+        return 'status'
+
+
+    def help(self, message_text, message_type, conversation_id, sender_name, sender_id):
+        msg = 'Commands:'
+        for handler_function in self.message_handlers:
+            if handler_function != self.help:
+                msg += '\n<b>{}</b>'.format(handler_function.__name__)
+                msg += '\n' + inspect.getdoc(handler_function)
+                
+        return msg
+
+    def register_handlers(self):
+        self.message_handlers = []
+        
+        self.message_handlers.append(self.help)
+        self.message_handlers.append(self.status)
+        
+    def iter_handlers(self):
+        for handler_function in self.message_handlers:
+            yield re.compile('{}'.format(handler_function.__name__)), handler_function
+        
+
+    def handle_message(self, message_text, message_type, conversation_id, sender_name, sender_id):
+        jenkins_id = self.get_contact_jenkins_id(sender_id)
+        if jenkins_id is None:
+            return self._handle_new_user(message_text, message_type, conversation_id, sender_name, sender_id)
+        
+        for regex, message_handler in self.iter_handlers():
+            if regex.match(message_text):
+                return message_handler(message_text, message_type, conversation_id, sender_name, sender_id)
+        
 
     def set_default_message_handler(self, function):  # get_message(text, type, conversation_id)
         self.default_handler = function
