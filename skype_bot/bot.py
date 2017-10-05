@@ -25,7 +25,7 @@ class Bot(Flask):
     bot_host = 'localhost'
 
 
-    def __init__(self, _config):
+    def __init__(self, _config=None):
         super(Bot, self).__init__(__name__)
 
         config = self.get_config(_config)
@@ -40,6 +40,7 @@ class Bot(Flask):
         if 'logging_level' in config:
             logging.basicConfig(level=config['logging_level'],
                                 format='%(asctime)s %(levelname)-8s %(name)-15s %(message)s')
+        
         self.auth = Auth(self.bot_app_id, self.bot_password)
 
         self.default_handler = None
@@ -171,6 +172,7 @@ class Bot(Flask):
         job_result = build_info['result']
         message = '{} <b>Finished:</b> {}'.format(result_emoji.get(job_result, ''), job_link)
 
+        message += '\nResult: <b>{}</b>'.format(job_result)
         message += '\nDuration: <b>{:.2f}</b>'.format(float(build_info['duration']) / 1000.0 / 60.0)
 
         start_millis = int(build_info['timestamp'])
@@ -250,8 +252,19 @@ class Bot(Flask):
         self.logger.debug(request.json)
         message = request_json['text']
 
-        answer = self.default_handler(message, request_type, conversation_id, sender_name, sender_id)
-        self.send(conversation_id=conversation_id, message=answer)
+        try:
+            answer = self.handle_message(message, request_type, conversation_id, sender_name, sender_id)
+        except Exception as e:
+            self.logger.exception(e)
+            raise Exception(e)
+
+        print 'Answear:', answer
+        try:
+            self.send(conversation_id=conversation_id, message=answer)
+        except Exception as e:
+            self.logger.exception(e)
+            raise Exception(e)
+
         return ''
 
 
@@ -281,7 +294,7 @@ class Bot(Flask):
             raise Exception(e)
 
     REGISTER_USER_MSG = "Thanks. You are registered as: '{}'"
-    UNKNOWN_USER_MSG = "Sorry. I don't know you yet.\nReply with your jenkins user name in the form: 'jenkins_id: <your id>"
+    UNKNOWN_USER_MSG = "Sorry. I don't know you yet.\nReply with your jenkins user name in the form: 'jenkins_id: your_id"
         
     def _handle_new_user(self, message_text, message_type, conversation_id, sender_name, sender_id):
         jenkins_id_match = re.search('jenkins_id:\s([^\s]+)', message_text)

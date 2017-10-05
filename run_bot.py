@@ -27,7 +27,7 @@ def handle_message(text, type, conversation_id, sender_name, sender_id):
     return 'message received'
 
 
-my_bot = Bot(bot_config)
+my_bot = Bot()
 my_bot.set_default_message_handler(handle_message)
 app = my_bot
 
