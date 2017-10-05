@@ -166,20 +166,34 @@ class Bot(Flask):
             yield user_info
         
     def get_jenkins_conversation_id(self, jenkins_id):
+        user_info = self._users_db.find_one({'jenkins_id' : jenkins_id})
+        if user_info:
+            return user_info['conversation_id']
+        else:
+            return None
+            
         for user_info in self._known_contacts:
             if user_info['jenkins_id'] == jenkins_id:
                 return user_info['conversation_id']
     
     def get_contact_info(self, skype_id):
+        return self._users_db.find_one({'skype_id' : skype_id})
+        
         for user_info in self._known_contacts:
             if skype_id == user_info['skype_id']:
                 return user_info
         
     def get_contact_jenkins_id(self, skype_id):
+        user_info = self._users_db.find_one({'skype_id' : skype_id})
+        if user_info:
+            return user_info['jenkins_id']
+        else:
+            return None
+        
         for user_info in self._known_contacts:
             if skype_id == user_info['skype_id']:
                 return user_info['jenkins_id']
-            
+
     def _register_jenkins_user(self, jenkins_id, conversation_id, skype_name, skype_id):
         contact_info = self.get_contact_info(skype_id)
         new_contact_info = {
@@ -189,23 +203,26 @@ class Bot(Flask):
             'conversation_id' : conversation_id
         }
         if contact_info is None:
-            print ' new_contact_info' , new_contact_info
-            self._known_contacts.append(new_contact_info)
+            print 'new_contact_info' , new_contact_info
+#             self._known_contacts.append(new_contact_info)
             users_db = self._get_users_db()
             if users_db is not None:
                 print ' Insert:', users_db.insert(new_contact_info)
             
         else:
             contact_info.update(new_contact_info)
+            print 'updating contact_info' , contact_info
             users_db = self._get_users_db()
-            if users_db is not None:
-                db_records = list(users_db.find({'skype_id' : skype_id }))
-                print db_records
-                assert len(db_records) <= 1
-                if len(db_records) == 1:
-                    db_contact_info = db_records[0] 
-                    db_contact_info.update(contact_info)
-                    users_db.save(db_contact_info)
+            users_db.save(contact_info)
+#             if users_db is not None:
+#                 db_records = list(users_db.find({'skype_id' : skype_id }))
+#                 print db_records
+#                 assert len(db_records) <= 1
+#                 if len(db_records) == 1:
+#                     db_contact_info = db_records[0] 
+#                     db_contact_info.update(contact_info)
+#                     users_db.save(db_contact_info)
+#                     users_db.save(db_contact_info)
             
 
     def _build_job_message(self, caption, job_name, build_info):
@@ -431,7 +448,7 @@ class Bot(Flask):
             raise Exception(e)
 
     REGISTER_USER_MSG = "Thanks. You are registered as: '{}'"
-    UNKNOWN_USER_MSG = "Sorry. I don't know you yet.\nReply with your jenkins user name in the form: 'jenkins_id: your_id"
+    UNKNOWN_USER_MSG = "Sorry. I don't know you yet.\nReply with your jenkins user name in the form: jenkins_id: your_id"
         
     def _handle_new_user(self, message_text, message_type, conversation_id, sender_name, sender_id):
         jenkins_id_match = re.search('jenkins_id:\s([^\s]+)', message_text)
