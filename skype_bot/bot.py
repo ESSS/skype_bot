@@ -25,10 +25,10 @@ class Bot(Flask):
     bot_host = 'localhost'
 
 
-    def __init__(self, _config=None):
+    def __init__(self, _config=None, config_filename=None):
         super(Bot, self).__init__(__name__)
 
-        config = self.get_config(_config)
+        config = self.get_config(_config, config_filename)
 
         self.bot_name = config['bot_name']
         self.bot_password = config['bot_password']
@@ -51,19 +51,27 @@ class Bot(Flask):
         self._known_contacts = []
         self.jenkins_config = config.get('jenkins', {'url' : ''})
         self.register_handlers()
+        
+        self.mongodb_url = None
+        self._users_db = None
+        mongodb_config = config.get('mongodb')
+        if mongodb_config:
+            self.mongodb_url = mongodb_config.get('url')
+            self._setup_users()
 
         self.add_url_rule('/api/messages', view_func=self.api_messages, methods=['POST'])
         self.add_url_rule('/job/started', view_func=self.job_started, methods=['GET'])
         self.add_url_rule('/job/completed', view_func=self.job_completed, methods=['GET'])
 
     # Bot ------------------------------------------------------------------------------------------
-    def get_config(self, config):
+    def get_config(self, config, config_location):
         import yaml
 
         if config is not None:
             return config
 
-        config_location = '{}/config.yaml'.format(os.getcwd())
+        if config_location is None:
+            config_location = '{}/config.yaml'.format(os.getcwd())
         try:
             with open(config_location, 'r') as stream:
                 try:
@@ -75,7 +83,32 @@ class Bot(Flask):
                                  If you have a config.yaml file make sure it is in the working directory and try again.')
             return {}
 
+    # JenkinsDB ------------------------------------------------------------------------------------
+    def _get_users_db(self):
+        if self.mongodb_url is not None and self._users_db is None:
+            from pymongo import MongoClient
+            
+            client = MongoClient(self.mongodb_url)
+            print(client.server_info())
+        
+            self._users_db =client.jenkins.skype_users
+            
+        return self._users_db
+            
+             
+    
+    def _setup_users(self):
+        users_db = self._get_users_db()
+        if users_db:
+            for user_info in users_db.find():
+                self._known_contacts.append(user_info)
+
+
     # Jenkins --------------------------------------------------------------------------------------
+    def iter_users_info(self):
+        for user_info in self._known_contacts:
+            yield user_info
+        
     def get_jenkins_conversation_id(self, jenkins_id):
         for user_info in self._known_contacts:
             if user_info['jenkins_id'] == jenkins_id:
@@ -83,29 +116,41 @@ class Bot(Flask):
     
     def get_contact_info(self, skype_id):
         for user_info in self._known_contacts:
-            if skype_id == user_info['skype']['id']:
+            if skype_id == user_info['skype_id']:
                 return user_info
         
     def get_contact_jenkins_id(self, skype_id):
         for user_info in self._known_contacts:
-            if skype_id == user_info['skype']['id']:
+            if skype_id == user_info['skype_id']:
                 return user_info['jenkins_id']
             
     def _register_jenkins_user(self, jenkins_id, conversation_id, skype_name, skype_id):
         contact_info = self.get_contact_info(skype_id)
         new_contact_info = {
             'jenkins_id' : jenkins_id,
-            'skype' : {
-                'id' : skype_id,
-                'name' : skype_name
-            },
+            'skype_id' : skype_id,
+            'skype_name' : skype_name,
             'conversation_id' : conversation_id
         }
         if contact_info is None:
+            print ' new_contact_info' , new_contact_info
             self._known_contacts.append(new_contact_info)
+            users_db = self._get_users_db()
+            if users_db is not None:
+                print ' Insert:', users_db.insert(new_contact_info)
             
         else:
             contact_info.update(new_contact_info)
+            users_db = self._get_users_db()
+            if users_db is not None:
+                db_records = list(users_db.find({'skype_id' : skype_id }))
+                print db_records
+                assert len(db_records) <= 1
+                if len(db_records) == 1:
+                    db_contact_info = db_records[0] 
+                    db_contact_info.update(contact_info)
+                    users_db.save(db_contact_info)
+            
 
 
     def _send_start_message(self, build_info):
