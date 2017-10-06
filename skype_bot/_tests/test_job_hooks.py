@@ -5,8 +5,11 @@ import urllib
 from datetime import datetime
 
 import mock
+import pytest
 
+import mongomock
 from skype_bot.bot import Bot
+from skype_bot.users_bot import UsersBot
 
 bot_config = {
     'bot_name': 'my-bot',
@@ -21,18 +24,30 @@ bot_config = {
     }
 }
 
-# @mock.patch.object(Bot, 'send', return_value=200)
-def test_job_started():
-    app = Bot(bot_config)
+@pytest.fixture(scope='module')
+def bot():
+    with mock.patch.object(UsersBot, '_get_jenkins_db', return_value=mongomock.MongoClient().db):
+        yield Bot({
+            'bot_name' : 'bot_name',
+            'bot_password' : 'bot_password',
+            'bot_app_id' : 'bot_app_id',
+            'jenkins' : {'url' : '/'},
+            'mongodb' : {'url' : None}
+        })
+
+
+def test_job_started(bot):
+    app = bot
 
     start_date = datetime(2017, 1, 1)
     timestamp = time.mktime(start_date.timetuple())
 
+    jenkins_id = 'jenkins_id'
     params = {
         'event' : 'jenkins.job.started',
         'timestamp' : '%d' % (timestamp * 1000),
         'number' : '1',
-        'userId' : 'tnobrega',
+        'userId' : jenkins_id,
         'job_name' : 'etk-fb-ETK-ROCKY-v4.0-merge-master-win64-35',
         'builtOn' : 'dev-windows10-win-sv01-ci02',
         'url' : 'job/etk-fb-ETK-ROCKY-v4.0-merge-master-win64-35/1/',
@@ -40,7 +55,16 @@ def test_job_started():
 
     encoded_params = urllib.urlencode(params)
 
-    app._jenkins_contacts['tnobrega'] = 'id'
+    with mock.patch.object(Bot, 'send', return_value=200) as send_mock:
+        with app.test_client() as c:
+            resp = c.get('/job/started?' + encoded_params)
+            assert resp.status_code == 200
+            assert send_mock.call_count == 1
+            send_mock.assert_called_with(None, None)
+
+    # register user
+    with mock.patch.object(Bot, 'send', return_value=200) as send_mock:
+        app._handle_delivered_message('jenkins_id: {}'.format(jenkins_id), 'message', 'conversation_id', 'sender_name', 'sender_id')
 
     with mock.patch.object(Bot, 'send', return_value=200) as send_mock:
         with app.test_client() as c:
@@ -48,7 +72,7 @@ def test_job_started():
             assert resp.status_code == 200
             assert send_mock.call_count == 1
             send_mock.assert_called_with(
-                u'id',
+                u'conversation_id',
                 '(skate) <b>Started:</b>'
                 ' <a href="/job/etk-fb-ETK-ROCKY-v4.0-merge-master-win64-35">etk-fb-ETK-ROCKY-v4.0-merge-master-win64-35</a>'
                 '\nStarted: <b>2017-01-01 00:00:00</b>'
@@ -60,7 +84,7 @@ def test_job_started():
         'duration' : '4938350',
         'timestamp' : '%d' % (timestamp * 1000),
         'number' : '10',
-        'userId' : 'tnobrega',
+        'userId' : jenkins_id,
         'job_name' : 'rocky30-fb-ROCKY-5028-linux-tests-linux64',
         'result' : 'SUCCESS',
         'url' : 'job/rocky30-fb-ROCKY-5028-linux-tests-linux64/10/',
@@ -73,9 +97,10 @@ def test_job_started():
             assert resp.status_code == 200
             assert send_mock.call_count == 1
             send_mock.assert_called_with(
-                u'id',
+                u'conversation_id',
                 ';) <b>Finished:</b>'
                 ' <a href="/job/rocky30-fb-ROCKY-5028-linux-tests-linux64">rocky30-fb-ROCKY-5028-linux-tests-linux64</a>'
+                '\nResult: <b>SUCCESS</b>'
                 '\nDuration: <b>82.31</b>'
                 '\nStarted: <b>2017-01-01 00:00:00</b>'
             )
