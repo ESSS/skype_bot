@@ -483,8 +483,11 @@ class UsersBot(object):
             return jenkins_config
 
         job_name = jobs_list[job_number]
-        print jenkins_config
-        return jenkins_jobs.build_job(job_name, jenkins_config)
+        return_code, message = jenkins_jobs.build_job(job_name, jenkins_config)
+        if return_code == 0:
+            return 'Build requested: {}'.format(self.get_job_link_message(job_name))
+        else:
+            return 'Build request failed: {}'.format(message)
 
     USER_RUNNING_JOBS = 'running_jobs'
 

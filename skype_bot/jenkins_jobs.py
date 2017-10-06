@@ -95,6 +95,8 @@ def get_build_parameters(job_name, build_number, config):
                     for parameter in parameters:
                         result.append((parameter['name'], parameter['value']))
                     return result
+                
+    return []
 
 
 def get_last_build_info(job_name, config):
