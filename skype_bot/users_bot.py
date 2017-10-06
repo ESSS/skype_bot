@@ -423,7 +423,7 @@ class UsersBot(object):
 
         msg = 'Last build jobs:'
         for i, job_name in enumerate(history):
-            msg += '\n  - {}: {}'.format(i+1, job_name)
+            msg += '\n  - {}: {}'.format(i+1, self.get_job_link_message(job_name))
         return msg
 
 
