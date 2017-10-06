@@ -317,30 +317,30 @@ class UsersBot(object):
     REGISTER_USER_MSG = "Thanks. You are registered as: '{}'"
     UNKNOWN_USER_MSG = "Sorry. I don't know you yet.\nReply with your jenkins user name in the form: jenkins_id: your_id"
 
+    def _parse_single_text_command(self, name, message_text):
+        match = re.search('{}:?\s*([^\s]+)'.format(name), message_text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+
+    def _parse_int_command(self, name, message_text):
+        match = re.search('{}:?\s*(\d+)'.format(name), message_text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+
+
     def _handle_new_user(self, message_text, message_type, conversation_id, sender_name, sender_id):
-        jenkins_id_match = re.search('jenkins_id:\s*([^\s]+)', message_text, re.IGNORECASE)
-        if jenkins_id_match:
-            jenkins_id = jenkins_id_match.group(1)
+#         jenkins_id_match = re.search('jenkins_id:\s*([^\s]+)', message_text, re.IGNORECASE)
+        jenkins_id = self._parse_single_text_command('jenkins_id', message_text)
+        if jenkins_id:
             self._register_jenkins_user(jenkins_id, conversation_id, sender_name, sender_id)
             return self.REGISTER_USER_MSG.format(jenkins_id)
         else:
             return self.UNKNOWN_USER_MSG
 
-    def _parse_single_text_command(self, name, message_text):
-        match = re.search('{}:\s*([^\s]+)'.format(name), message_text, re.IGNORECASE)
-        if match:
-            return match.group(1)
-
-    def _parse_int_command(self, name, message_text):
-        match = re.search('{}:\s*(\d+)'.format(name), message_text, re.IGNORECASE)
-        if match:
-            return match.group(1)
-
-
     def jenkins_token(self, message_text, message_type, conversation_id, skype_name, skype_id):
         '''
         Register your jenkins token
-           <b>usage</b>: stop: jenkins_token: your_token
+           <b>usage</b>: jenkins_token your_token
         '''
         jenkins_token = self._parse_single_text_command('jenkins_token', message_text)
         if jenkins_token is None:
@@ -351,10 +351,10 @@ class UsersBot(object):
     def stop(self, message_text, message_type, conversation_id, skype_name, skype_id):
         '''
         Stops the given job index from your running list from status command
-        usage: stop: running_id
+           <b>usage</b>: stop running_id
         '''
-        match = re.search('stop:\s*(\d)', message_text, re.IGNORECASE)
-        if not match:
+        job_number = self._parse_int_command('stop', message_text)
+        if job_number is None:
             return 'Unable to get build number from message: "{}"'.format(message_text)
 
         jenkins_id = self.get_contact_jenkins_id(skype_id)
@@ -365,7 +365,7 @@ class UsersBot(object):
         if jobs_list is None or len(jobs_list) == 0:
             return 'No running jobs. Update this list from status command'
 
-        job_number = int(match.group(1)) - 1
+        job_number = int(job_number) - 1
         if job_number < 0 or job_number > len(jobs_list):
             return 'Invalid history number: {}'.format(job_number)
 
@@ -377,11 +377,10 @@ class UsersBot(object):
         '''
         Rebuilds the given job index from your history.
         If the job is parametrized, the same parametrization from last run will be used.
-
-        usage: rebuild: history_id
+           <b>usage</b>: rebuild history_id
         '''
-        match = re.search('rebuild:\s*(\d)', message_text, re.IGNORECASE)
-        if not match:
+        history_number = self._parse_int_command('rebuild', message_text)
+        if history_number is None:
             return 'Unable to get build number from message: "{}"'.format(message_text)
 
         jenkins_id = self.get_contact_jenkins_id(skype_id)
@@ -392,7 +391,7 @@ class UsersBot(object):
         if history is None or len(history) == 0:
             return 'No history!'
 
-        history_number = int(match.group(1)) - 1
+        history_number = int(history_number) - 1
         if history_number < 0 or history_number > len(history):
             return 'Invalid history number: {}'.format(history_number)
 
@@ -408,8 +407,7 @@ class UsersBot(object):
     def history(self, message_text, message_type, conversation_id, skype_name, skype_id):
         '''
         Return a list of your last 5 jobs
-
-        usage: history
+           <b>usage</b>: history
         '''
         jenkins_id = self.get_contact_jenkins_id(skype_id)
         if jenkins_id is None:
@@ -430,7 +428,7 @@ class UsersBot(object):
     def find(self, message_text, message_type, conversation_id, skype_name, skype_id):
         '''
         Find jobs with a given pattern
-        <b>usage</b> find: rocky30*5050*linux64
+           <b>usage</b>: find rocky30*5050*linux64
         '''
         self._add_user_data(skype_id, self.USER_JOBS_LIST, None)
 
@@ -464,7 +462,7 @@ class UsersBot(object):
     def build(self, message_text, message_type, conversation_id, skype_name, skype_id):
         '''
         Builds a previously listed job from <b>find</b> command
-        <b>usage</b> build: job_list_number
+           <b>usage</b>: build: job_list_number
         '''
         job_number = self._parse_int_command('build', message_text)
         if job_number is None:
@@ -494,8 +492,7 @@ class UsersBot(object):
     def status(self, message_text, message_type, conversation_id, skype_name, skype_id):
         '''
         Return current running jobs status started by you!
-
-        usage: status
+           <b>usage</b>: status
         '''
         self._add_user_data(skype_id, self.USER_RUNNING_JOBS, None)
 
@@ -553,6 +550,12 @@ class UsersBot(object):
     UNKNOWN_CMD = 'Unknown command: {}'
 
     def handle_message(self, message_text, message_type, conversation_id, sender_name, sender_id):
+        # Pre-process message, to remove edited data
+        # Skype send an edit message as: "Edited previous message: your_previous_message<e_m ts="1507311221
+        edited_message_match = re.match('Edited\sprevious\smessage:\s(.+?)(?=<e_m)', message_text)
+        if edited_message_match:
+            message_text = edited_message_match.group(1)
+        
         jenkins_id = self.get_contact_jenkins_id(sender_id)
         if jenkins_id is None:
             return self._handle_new_user(message_text, message_type, conversation_id, sender_name, sender_id)
