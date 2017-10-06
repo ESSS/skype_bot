@@ -72,7 +72,7 @@ def post_jenkins_json_request(query_url, config):
 
     r = requests.post(url, auth=(user, token))
     print(query_url, r.status_code)
-    return r.status_code == 201
+    return r.status_code in (200, 201)
 
 
 def get_build_parameters(job_name, build_number, config):
@@ -175,17 +175,18 @@ def build_job(job_name, config):
 def stop_job(job_name, config):
     last_build_info = get_last_build_info(job_name, config)
     if last_build_info is None:
-        return 'Job build not found'
+        return -1, 'Job build not found'
 
     building = last_build_info.get('building')
     if building:
         post_url = 'job/{}/{}/stop'.format(job_name, last_build_info['number'])
-        return unicode(post_jenkins_json_request(post_url, config))
+        if post_jenkins_json_request(post_url, config):
+            return 0, 'Build stopped!'
 
     elif building == False:
-        return 'Job is no longer running: ' + job_name
+        return -1, 'Job is no longer running: ' + job_name
 
-    return 'Unable to determine job progress: ' + job_name
+    return -1, 'Unable to determine job progress: ' + job_name
 
 
 def get_build_test_errors(job_name, build_number, config):

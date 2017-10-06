@@ -370,7 +370,11 @@ class UsersBot(object):
             return 'Invalid history number: {}'.format(job_number)
 
         job_name = jobs_list[job_number]
-        return stop_job(job_name, self.jenkins_config)
+        return_code, message = stop_job(job_name, self.jenkins_config)
+        if return_code == 0:
+            return 'Stop requested: {}'.format(self.get_job_link_message(job_name))
+        else:
+            return 'Stop request failed: {}'.format(message)
 
 
     def rebuild(self, message_text, message_type, conversation_id, skype_name, skype_id):
