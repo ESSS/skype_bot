@@ -379,8 +379,8 @@ class UsersBot(object):
 
     def rebuild(self, message_text, message_type, conversation_id, skype_name, skype_id):
         '''
-        Rebuilds the given job index from your history.
-        If the job is parametrized, the same parametrization from last run will be used.
+        Rebuilds the given job index from your <b>history</b>.
+        If the job is parametrized, the same parameters from last run will be used.
            <b>usage</b>: rebuild history_id
         '''
         history_number = self._parse_int_command('rebuild', message_text)
@@ -529,7 +529,7 @@ class UsersBot(object):
         msg = 'Commands:'
         for handler_function in self.message_handlers:
             if handler_function != self.help:
-                msg += '\n<b>{}</b>'.format(handler_function.__name__)
+                msg += '\n(ninja) <b>{}</b>'.format(handler_function.__name__)
                 msg += '\n' + inspect.getdoc(handler_function)
 
         return msg
@@ -538,13 +538,13 @@ class UsersBot(object):
         self.message_handlers = []
 
         self.message_handlers.append(self.help)
-        self.message_handlers.append(self.jenkins_token)
         self.message_handlers.append(self.status)
         self.message_handlers.append(self.history)
         self.message_handlers.append(self.rebuild)
-        self.message_handlers.append(self.stop)
         self.message_handlers.append(self.find)
         self.message_handlers.append(self.build)
+        self.message_handlers.append(self.stop)
+        self.message_handlers.append(self.jenkins_token)
 
 
     def iter_handlers(self):
