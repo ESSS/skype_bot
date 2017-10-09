@@ -51,7 +51,7 @@ class Bot(Flask):
 
     def _get_auth(self, app_id, app_password):
         from auth import Auth
-        self.auth = Auth(app_id, app_password)
+        return Auth(app_id, app_password)
 
     def job_started(self, *args):
         '''

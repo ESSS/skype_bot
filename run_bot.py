@@ -21,14 +21,7 @@ bot_config = {
 }
 
 
-def handle_message(text, type, conversation_id, sender_name, sender_id):
-    print("Message from {} received. Text: {}, type: {}, conversion_id: {}".format(sender_name, text, type,
-                                                                                   conversation_id))
-    return 'message received'
-
-
 my_bot = Bot()
-my_bot.set_default_message_handler(handle_message)
 app = my_bot
 
 if __name__ == "__main__":

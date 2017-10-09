@@ -159,7 +159,7 @@ class UsersBot(object):
             return None
 
     UNKNOWN_USER_TOKEN_MSG = "For you to become a big boy. I need your jenkins token" \
-        "\nPlease obtain you token from: http://your.jenkins.server/me/configure" \
+        "\nPlease obtain you token from: {}me/configure" \
         "and get me your API Token." \
         "\nRegister with: jenkins_token: your_api_token"
 
@@ -174,7 +174,7 @@ class UsersBot(object):
 
         jenkins_token = user_info.get('jenkins_token')
         if jenkins_token is None:
-            return self.UNKNOWN_USER_TOKEN_MSG
+            return self.UNKNOWN_USER_TOKEN_MSG.format(self.jenkins_config['url'])
 
         return {
             'url' : self.jenkins_config['url'],
