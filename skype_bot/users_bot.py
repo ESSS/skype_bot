@@ -160,7 +160,7 @@ class UsersBot(object):
 
     UNKNOWN_USER_TOKEN_MSG = "For you to become a big boy. I need your jenkins token" \
         "\nPlease obtain you token from: {}me/configure" \
-        "and get me your API Token." \
+        " and get me your API Token." \
         "\nRegister with: jenkins_token: your_api_token"
 
 
@@ -298,7 +298,7 @@ class UsersBot(object):
             if len(test_errors) == 0:
                 message += ' Unable to collect'
             else:
-                message += ' {}'.format(len(test_errors))
+                message += ' {}\n'.format(len(test_errors))
 
             i = 0;
             for error in test_errors:
@@ -333,6 +333,18 @@ class UsersBot(object):
         jenkins_id = self._parse_single_text_command('jenkins_id', message_text)
         if jenkins_id:
             self._register_jenkins_user(jenkins_id, conversation_id, sender_name, sender_id)
+            return self.REGISTER_USER_MSG.format(jenkins_id)
+        else:
+            return self.UNKNOWN_USER_MSG
+
+    def jenkins_id(self, message_text, message_type, conversation_id, skype_name, skype_id):
+        '''
+        Register your jenkins user name
+           <b>usage</b>: jenkins_id your_jenkins_id
+        '''
+        jenkins_id = self._parse_single_text_command('jenkins_id', message_text)
+        if jenkins_id:
+            self._register_jenkins_user(jenkins_id, conversation_id, skype_name, skype_id)
             return self.REGISTER_USER_MSG.format(jenkins_id)
         else:
             return self.UNKNOWN_USER_MSG
@@ -545,6 +557,7 @@ class UsersBot(object):
         self.message_handlers.append(self.build)
         self.message_handlers.append(self.stop)
         self.message_handlers.append(self.jenkins_token)
+        self.message_handlers.append(self.jenkins_id)
 
 
     def iter_handlers(self):

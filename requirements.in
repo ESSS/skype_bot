@@ -2,3 +2,5 @@ PyJWT
 pyOpenSSL
 flask
 requests
+pymongo
+pyaml
