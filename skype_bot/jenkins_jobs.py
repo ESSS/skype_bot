@@ -2,9 +2,12 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import json
 import urllib
-from datetime import datetime
 
 import requests
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 FAIL_TO_RETRIEVE = -1, 'Unable to retrieve jenkins data!'
 
@@ -24,7 +27,6 @@ def get_job_parameters(job_name, config):
     url = jenkins_url + 'job/' + job_name + \
         '/api/json?pretty=true&tree=actions[parameterDefinitions[name]]'
 
-    print(url)
     r = requests.get(url, auth=(user, token))
     if r.status_code != 200:
         return None
@@ -71,7 +73,7 @@ def post_jenkins_json_request(query_url, config):
     url = jenkins_url + query_url
 
     r = requests.post(url, auth=(user, token))
-    print(query_url, r.status_code)
+    logger.debug('post_jenkins_json_request: {} = {}' .format(query_url, r.status_code))
     return r.status_code in (200, 201)
 
 
@@ -211,7 +213,7 @@ def get_build_test_errors(job_name, build_number, config):
     try:
         cases = result['suites'][0]['cases']
     except:
-        print('Failed to get cases')
+        logger.debug('Failed to get cases: {}' .format(url))
         return []
 
 
@@ -247,7 +249,7 @@ def get_job_last_build(job_name):
     url = jenkins_url + 'job/'  + job_name + '/lastBuild/api/json?pretty=true&tree=building,number,duration,builtOn,timestamp,result,estimatedDuration,actions[causes[*]]'
     r = requests.get(url, auth=(JENKINS_USER, JENKINS_TOKEN))
     if r.status_code != 200:
-        print('Failed to get building jobs')
+        logger.debug('Failed to get building jobs: {}' .format(url))
         return {}
 
     result = json.loads(r.text)

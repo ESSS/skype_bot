@@ -1,0 +1,16 @@
+version: 1
+formatters:
+  simple:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+handlers:
+  console:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: simple
+    filename: skype_bot.log
+    maxBytes: 1024 * 1024
+    backupCount: 5
+    encoding: utf-8
+root:
+  level: DEBUG
+  handlers: [console]

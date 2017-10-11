@@ -65,7 +65,7 @@ class Bot(Flask):
             &builtOn=dev-windows10-win-sv01-ci02
             &url=job/etk-fb-ETK-ROCKY-v4.0-merge-master-win64-35/1/
         '''
-        print('Started:', request.args)
+        self.logger.info('job_started: {}'.format(request.args))
         conversation_id, message = self.users_bot.get_started_message(request.args)
         self.send(conversation_id, message)
         return ''
@@ -83,7 +83,7 @@ class Bot(Flask):
             &result=FAILURE
             &url=job/rocky30-fb-ETK-ROCKY-v4.0-merge-master-linux64/3/
         '''
-        print('job_completed', request.args)
+        self.logger.info('job_completed: {}'.format(request.args))
         conversation_id, message = self.users_bot.get_completed_message(request.args)
         self.send(conversation_id, message)
         return ''

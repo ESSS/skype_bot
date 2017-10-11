@@ -6,7 +6,9 @@ import re
 from skype_bot import jenkins_jobs
 from skype_bot.jenkins_jobs import get_build_test_errors, get_building_jobs, get_job_url, stop_job
 from skype_bot.skype_message import SkypeMessage
+import logging
 
+logger = logging.getLogger(__name__)
 
 #===================================================================================================
 # JobsHistory
@@ -26,7 +28,7 @@ class JobsHistory(object):
 
     def get_jobs_history(self, jenkins_id):
         user_history = self.get_history(jenkins_id)
-        print jenkins_id, user_history
+        logger.debug('get_jobs_history: {} = {}'.format(jenkins_id, user_history))
         if user_history:
             return user_history['history']
         else:
@@ -45,7 +47,7 @@ class JobsHistory(object):
                 history.pop(entry_index)
 
             history.insert(0, job_name)
-            print('save', user_history)
+            logger.debug('save history: {}'.format(user_history))
             self.jobs_db.save(user_history)
 
         elif self.jobs_db:
@@ -88,7 +90,7 @@ class UsersBot(object):
 
     def _setup_mongo_db(self, mongodb_url):
         jenkins_db = self._get_jenkins_db(mongodb_url)
-        print('jenkins_db', jenkins_db)
+        logger.debug('_setup_mongo_db: {}'.format(jenkins_db))
         if jenkins_db is not None:
             self._users_db = jenkins_db.skype_users
             self._users_history = JobsHistory(jenkins_db.users_jobs)
@@ -192,15 +194,16 @@ class UsersBot(object):
             'conversation_id' : conversation_id
         }
         if contact_info is None:
-            print 'new_contact_info' , new_contact_info
-#             self._known_contacts.append(new_contact_info)
+            logger.debug('new_contact_info: {}'.format(new_contact_info))
             users_db = self._get_users_db()
+            print('_register_jenkins_user', users_db)
             if users_db is not None:
-                print ' Insert:', users_db.insert(new_contact_info)
+                _id = users_db.insert(new_contact_info)
+                logger.debug('users_db.insert: {}'.format(_id))
 
         else:
             contact_info.update(new_contact_info)
-            print 'updating contact_info' , contact_info
+            logger.debug('updating contact_info: {}'.format(contact_info))
             users_db = self._get_users_db()
             users_db.save(contact_info)
 
